@@ -1,6 +1,10 @@
-numpy
-fastapi
-uvicorn
-pillow
-torch
-opencv-python
+numpy>=1.18.5
+fastapi>=0.68.0
+uvicorn>=0.15.0
+pillow>=7.1.2
+torch>=1.7.0
+torchvision>=0.8.1
+opencv-python>=4.1.2
+python-multipart>=0.0.5
+gitpython>=3.1.0
+PyYAML>=5.3.1
