@@ -14,6 +14,12 @@ import pathlib
 from contextlib import contextmanager
 import time
 
+yolov5_path = os.path.abspath('yolov5')
+if yolov5_path not in sys.path:
+    sys.path.append(yolov5_path)
+
+from yolov5.utils.general import non_max_suppression, scale_boxes
+
 app = FastAPI()
 
 origins = ['*']
@@ -38,10 +44,6 @@ def windows_compatible_path():
 
 def load_model():
     try:
-        yolov5_path = os.path.abspath('yolov5')
-        if yolov5_path not in sys.path:
-            sys.path.append(yolov5_path)
-            
         model_path = os.path.abspath('models/exp10_best.pt')
         
         from models.common import DetectMultiBackend
@@ -69,38 +71,58 @@ async def detect(file: UploadFile = File(...)):
         with torch.no_grad():
             results = MODEL(tensor_image)
             
-            if isinstance(results, (list, tuple)):
-                pred = results[0]
-            else:
-                pred = results
+            conf_thres = 0.35   
+            iou_thres = 0.4     
+            max_det = 15       
+            
+            pred = non_max_suppression(
+                results, 
+                conf_thres,
+                iou_thres,
+                classes=None,
+                agnostic=False,
+                max_det=max_det
+            )[0]
+            
+            pred[:, :4] = scale_boxes(tensor_image.shape[2:], pred[:, :4], original_image.shape).round()
+            
+            final_boxes = []
+            if len(pred) > 0:
+                boxes = pred.cpu().numpy()
                 
-            if len(pred.shape) == 3:
-                pred = pred.squeeze(0)
+                boxes = boxes[boxes[:, 1].argsort()]
                 
-            if pred.shape[1] != 6:
-                boxes = pred[:, :4]  
-                conf = pred[:, 4:5]  
-                cls = pred[:, 5:]    
-                cls_conf, cls_pred = torch.max(cls, 1, keepdim=True)
-                pred = torch.cat((boxes, conf * cls_conf, cls_pred.float()), 1)
+                y_threshold = 50 
+                current_group = []
+                grouped_boxes = []
+                
+                for box in boxes:
+                    if not current_group or abs(box[1] - current_group[0][1]) < y_threshold:
+                        current_group.append(box)
+                    else:
+                        current_group = sorted(current_group, key=lambda x: x[0])
+                        grouped_boxes.extend(current_group)
+                        current_group = [box]
+                
+                if current_group:
+                    current_group = sorted(current_group, key=lambda x: x[0])
+                    grouped_boxes.extend(current_group)
+                
+                for box in grouped_boxes:
+                    if not final_boxes:
+                        final_boxes.append(box)
+                    else:
+                        overlap = False
+                        for existing_box in final_boxes:
+                            iou = calculate_iou(box[:4], existing_box[:4])
+                            if iou > 0.3:
+                                overlap = True
+                                break
+                        if not overlap:
+                            final_boxes.append(box)
             
-            conf_threshold = 0.3
-            pred_boxes = pred.cpu().numpy()
-            
-            # Apply NMS with lower IOU threshold to keep more boxes
-            indices = cv2.dnn.NMSBoxes(
-                pred_boxes[:, :4].tolist(),
-                pred_boxes[:, 4].tolist(),
-                conf_threshold,
-                nms_threshold=0.3  # Lower NMS threshold to keep more overlapping boxes
-            )
-            
-            if len(indices) > 0:
-                if isinstance(indices, tuple):
-                    indices = indices[0]
-                filtered_boxes = pred_boxes[indices]
-                pred_boxes = filtered_boxes
-            
+            pred_boxes = np.array(final_boxes)
+        
         output_image = draw_predictions(original_image.copy(), pred_boxes, CLASSES, pad_info)
         
         output_dir = os.path.abspath('predictions')
@@ -150,3 +172,18 @@ async def get_image(image_path: str):
     if os.path.exists(image_path):
         return FileResponse(image_path)
     raise HTTPException(status_code=404, detail="Image not found")
+
+def calculate_iou(box1, box2):
+    """Calculate IoU between two boxes"""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    
+    union = area1 + area2 - intersection
+    return intersection / union if union > 0 else 0
+
