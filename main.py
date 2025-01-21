@@ -133,6 +133,7 @@ async def detect(file: UploadFile = File(...)):
         
         _, buffer = cv2.imencode('.png', output_image)
         base64_image = base64.b64encode(buffer).decode('utf-8')
+        base64_image_with_prefix = f"data:image/png;base64,{base64_image}"
         
         timestamp = int(time.time())
         output_filename = f'prediction_{timestamp}.jpg'
@@ -155,7 +156,7 @@ async def detect(file: UploadFile = File(...)):
             "status": 200,
             "message": "Prediction successful",
             "predictions": formatted_counts,
-            "prediction_image": base64_image,
+            "prediction_image": base64_image_with_prefix,
             "image_path": output_path,
             "image_shape": {
                 "height": original_image.shape[0],
