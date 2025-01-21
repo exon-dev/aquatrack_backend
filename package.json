@@ -6,6 +6,7 @@
   },
   "scripts": {
     "prepare": "husky",
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "echo \"No tests specified\" && exit 0",
+    "dev": "uvicorn main:app --reload"
   }
 }

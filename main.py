@@ -1,7 +1,10 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from preprocess import preprocess, draw_predictions
+from preprocess import preprocess
+from draw_prediction import draw_predictions
+
+import base64
 from PIL import Image
 import torch
 import cv2
@@ -58,7 +61,7 @@ def load_model():
         raise RuntimeError(f"Failed to load model: {str(e)}")
 
 MODEL = load_model()
-CLASSES = ['FIXED GALLONS']  
+CLASSES = ['FIXED GALLONS']
 
 @app.post('/api/v1/detect')
 async def detect(file: UploadFile = File(...)):
@@ -128,6 +131,9 @@ async def detect(file: UploadFile = File(...)):
         output_dir = os.path.abspath('predictions')
         os.makedirs(output_dir, exist_ok=True)
         
+        _, buffer = cv2.imencode('.png', output_image)
+        base64_image = base64.b64encode(buffer).decode('utf-8')
+        
         timestamp = int(time.time())
         output_filename = f'prediction_{timestamp}.jpg'
         output_path = os.path.join(output_dir, output_filename)
@@ -149,6 +155,7 @@ async def detect(file: UploadFile = File(...)):
             "status": 200,
             "message": "Prediction successful",
             "predictions": formatted_counts,
+            "prediction_image": base64_image,
             "image_path": output_path,
             "image_shape": {
                 "height": original_image.shape[0],
@@ -186,4 +193,3 @@ def calculate_iou(box1, box2):
     
     union = area1 + area2 - intersection
     return intersection / union if union > 0 else 0
-
