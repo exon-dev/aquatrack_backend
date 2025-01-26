@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 from preprocess import preprocess
 from draw_prediction import draw_predictions
 
@@ -16,12 +17,17 @@ from pathlib import Path
 import pathlib
 from contextlib import contextmanager
 import time
+import argparse
 
 yolov5_path = os.path.abspath('yolov5')
 if yolov5_path not in sys.path:
     sys.path.append(yolov5_path)
 
 from yolov5.utils.general import non_max_suppression, scale_boxes
+
+# TODO: Change this to your own IP address 
+MY_IP_ADDRESS = '192.168.1.2'
+
 
 app = FastAPI()
 
@@ -74,9 +80,9 @@ async def detect(file: UploadFile = File(...)):
         with torch.no_grad():
             results = MODEL(tensor_image)
             
-            conf_thres = 0.35   
+            conf_thres = 0.2   
             iou_thres = 0.4     
-            max_det = 15       
+            max_det = 12       
             
             pred = non_max_suppression(
                 results, 
@@ -194,3 +200,12 @@ def calculate_iou(box1, box2):
     
     union = area1 + area2 - intersection
     return intersection / union if union > 0 else 0
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default=MY_IP_ADDRESS, help='Host IP address')
+    parser.add_argument('--port', default=5000, type=int, help='Port number')
+    args = parser.parse_args()
+    
+    print(f"Running on {args.host}:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port)
