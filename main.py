@@ -53,7 +53,7 @@ def windows_compatible_path():
 
 def load_model():
     try:
-        model_path = os.path.abspath('models/exp10_best.pt')
+        model_path = os.path.abspath('models/final_training_best.pt')
         
         from models.common import DetectMultiBackend
         
@@ -67,7 +67,7 @@ def load_model():
         raise RuntimeError(f"Failed to load model: {str(e)}")
 
 MODEL = load_model()
-CLASSES = ['FIXED GALLONS']
+CLASSES = ['FIXED GALLON', 'BROKEN GALLON']
 
 @app.post('/api/v1/detect')
 async def detect(file: UploadFile = File(...)):

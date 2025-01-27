@@ -3,29 +3,55 @@ import cv2
 import numpy as np
 from torchvision import transforms
 
+def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+    shape = im.shape[:2]  
+    if isinstance(new_shape, int):
+        new_shape = (new_shape, new_shape)
+
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    if not scaleup:  
+        r = min(r, 1.0)
+
+    ratio = r, r  
+    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1] 
+    if auto: 
+        dw, dh = np.mod(dw, stride), np.mod(dh, stride)
+    elif scaleFill:  
+        dw, dh = 0.0, 0.0
+        new_unpad = (new_shape[1], new_shape[0])
+        ratio = new_shape[1] / shape[1], new_shape[0] / shape[0] 
+
+    dw /= 2 
+    dh /= 2
+
+    if shape[::-1] != new_unpad:  # resize
+        im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
+    return im, ratio[0], (dw, dh)
+
 def preprocess(image):
-    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    original_height, original_width = image_cv.shape[:2]
+    img = np.array(image)
     
-    ratio = 640.0 / max(original_height, original_width)
-    new_height = int(original_height * ratio)
-    new_width = int(original_width * ratio)
+    img = img[:, :, ::-1]
     
-    image_resized = cv2.resize(image_cv, (new_width, new_height))
+    original_image = img.copy()
+    original_size = img.shape[:2]
     
-    input_image = np.zeros((640, 640, 3), dtype=np.uint8)
+    img, ratio, (dw, dh) = letterbox(img, new_shape=(640, 640), auto=True)
     
-    y_offset = (640 - new_height) // 2
-    x_offset = (640 - new_width) // 2
-    input_image[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = image_resized
+    img = img.transpose((2, 0, 1))  
+    img = np.ascontiguousarray(img)
+    img = torch.from_numpy(img)
     
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    img = img.float()  
     
-    image_tensor = transform(input_image)
-    image_tensor = image_tensor.unsqueeze(0)
+    if len(img.shape) == 3:
+        img = img[None]
     
-    return image_tensor, image_cv, (original_width, original_height), (x_offset, y_offset, ratio)
+    pad_info = (dw, dh, ratio)
+    
+    return img, original_image, original_size, pad_info
 
